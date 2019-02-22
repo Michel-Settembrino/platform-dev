@@ -143,8 +143,7 @@ function FPFISPoetryIntegrationRequest($user, $password, $msg) {
 
   // Get main job in order to register the messages.
   $main_reference = 'MAIN_%_POETRY_%' . $reference;
-  $language_job = $request->status['lgCode'];
-  $ids = tmgmt_poetry_obtain_related_translation_jobs($language_job, $reference)
+  $ids = tmgmt_poetry_obtain_related_translation_jobs(NULL, $reference)
     ->fetchAll();
 
   // Handling the case where we can't find the corresponding job.
@@ -156,18 +155,18 @@ function FPFISPoetryIntegrationRequest($user, $password, $msg) {
       WATCHDOG_ERROR);
 
     // Send answer to poetry.
-    $xml = _tmgmt_poetry_generate_answer_xml(
+    $xml_answer = _tmgmt_poetry_generate_answer_xml(
       NULL,
       'ERROR: Job does not exist',
       -1,
       $request
     );
 
-    return $xml->asXML();
+    return $xml_answer->asXML();
   }
 
   $ids = array_shift($ids);
-  $message_job = tmgmt_job_load($ids->tjid);
+  $main_job = tmgmt_job_load($ids->tjid);
 
   // If the received message has a status, record it in the job.
   // </STATUS>.
@@ -218,7 +217,7 @@ function FPFISPoetryIntegrationRequest($user, $password, $msg) {
           $message = t('No message.');
         }
 
-        $message_job->addMessage(
+        $main_job->addMessage(
           t("DGT update received. Request status: @status. Message: @message"),
           array(
             '@status' => $status_message,
@@ -236,7 +235,7 @@ function FPFISPoetryIntegrationRequest($user, $password, $msg) {
             $job->aborted(t('Request aborted by DGT.'), array());
           }
         }
-        elseif ($message_job->isAborted()) {
+        elseif ($main_job->isAborted()) {
           $reference = '%' . $reference;
           $ids = tmgmt_poetry_obtain_related_translation_jobs(array(), $reference)
             ->fetchAll();
@@ -279,7 +278,7 @@ function FPFISPoetryIntegrationRequest($user, $password, $msg) {
           $language = "";
         }
 
-        $message_job->addMessage(
+        $main_job->addMessage(
           t("DGT update received. Affected language: @language. Request status: @status."),
           array(
             '@language' => $language,
@@ -307,7 +306,7 @@ function FPFISPoetryIntegrationRequest($user, $password, $msg) {
     $job_item = tmgmt_job_item_load($ids->tjiid);
 
     if (!isset($attributions['format']) || (isset($attributions['format']) && (strpos($job->getSetting('export_format'), drupal_strtolower((string) $attributions['format'])) === FALSE))) {
-      $message_job->addMessage(
+      $main_job->addMessage(
         t('Received format "@format" is not compatible, translation job format "@job_format" should be used instead'),
         array(
           '@format' => (string) $attributions['format'],
@@ -316,7 +315,7 @@ function FPFISPoetryIntegrationRequest($user, $password, $msg) {
       );
 
       $xml = _tmgmt_poetry_generate_answer_xml(
-        $message_job,
+        $main_job,
         'ERROR: Received format is not compatible',
         -1,
         $request
@@ -347,7 +346,7 @@ function FPFISPoetryIntegrationRequest($user, $password, $msg) {
         // Validate the file.
         $validated_job = $controller->validateImport($content);
         if (!$validated_job) {
-          $message_job->addMessage(
+          $main_job->addMessage(
             t('@language Failed to validate file, import aborted.'),
             array('@language' => $language),
             'error');
@@ -355,7 +354,7 @@ function FPFISPoetryIntegrationRequest($user, $password, $msg) {
         elseif ($validated_job->tjid != $job->tjid) {
           $uri = $validated_job->uri();
           $label = $validated_job->label();
-          $message_job->addMessage(
+          $main_job->addMessage(
             t('@language Import file is from job <a href="@url">@label</a>, import aborted.'),
             array(
               '@language' => $language,
@@ -370,7 +369,7 @@ function FPFISPoetryIntegrationRequest($user, $password, $msg) {
               // Validation successful, start import.
               $job->addTranslatedData($controller->import($content));
 
-              $message_job->addMessage(
+              $main_job->addMessage(
                 t('@language Successfully received the translation file.'),
                 array('@language' => $language)
               );
@@ -387,14 +386,14 @@ function FPFISPoetryIntegrationRequest($user, $password, $msg) {
             if (file_prepare_directory($dirname, FILE_CREATE_DIRECTORY)) {
               $file = file_save_data($content, $path);
               file_usage_add($file, 'tmgmt_file', 'tmgmt_job', $job->tjid);
-              $message_job->addMessage(
+              $main_job->addMessage(
                 t('Received tanslation can be downloaded <a href="!link">here</a>.'),
                 array('!link' => file_create_url($path))
               );
             }
           }
           catch (Exception $e) {
-            $message_job->addMessage(
+            $main_job->addMessage(
               t('@language File import failed with the following message: @message'),
               array(
                 '@language' => $language,

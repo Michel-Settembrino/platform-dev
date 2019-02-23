@@ -38,63 +38,6 @@ function _tmgmt_poetry_service_callback() {
 }
 
 /**
- * Helper function to generate an answer xml for received Poetry requests.
- */
-function _tmgmt_poetry_generate_answer_xml($job = NULL, $message = 'OK', $code = 0, $received_request = NULL) {
-  // Create initial XML element using POETRY headers.
-  $xml = new SimpleXMLElement("<?xml version=\"1.0\" encoding=\"utf-8\" ?>
-    <POETRY xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"
-    xsi:noNamespaceSchemaLocation=\"http://intragate.ec.europa.eu/DGT/poetry_services/poetry.xsd\">
-    </POETRY>");
-
-  // Add main request element.
-  $request = $xml->addChild('request');
-
-  if ($received_request !== NULL) {
-    $reference = implode('/', (array) $received_request->demandeId);
-  }
-  elseif ($job !== NULL) {
-    $reference = $job->reference;
-  }
-
-  $request->addAttribute('id', $reference);
-  $request->addAttribute('type', 'status');
-
-  // Add request identifier.
-  $demande_id_data = explode('/', $reference);
-  $demande_id = $request->addChild('demandeId');
-  $demande_id->addChild('codeDemandeur', $demande_id_data[0]);
-  $demande_id->addChild('annee', $demande_id_data[1]);
-  $demande_id->addChild('numero', $demande_id_data[2]);
-  $demande_id->addChild('version', $demande_id_data[3]);
-  $demande_id->addChild('partie', $demande_id_data[4]);
-  $demande_id->addChild('produit', $demande_id_data[5]);
-
-  $status = $request->addChild('status');
-  $status->addAttribute('type', 'request');
-  $status->addAttribute('code', $code);
-
-  $status_date = $status->addChild('statusDate', date('d/m/Y'));
-  $status_date->addAttribute('format', 'dd/mm/yyyy');
-
-  $status_time = $status->addChild('statusTime', date('h:i:s'));
-  $status_time->addAttribute('format', 'hh:mm:ss');
-
-  $status->addChild('statusMessage', $message);
-
-  return $xml;
-}
-
-/**
- * Helper function to authenticate request made to our service.
- */
-function _tmgmt_poetry_authenticate($user, $password, $translator) {
-  // Get the Poetry translator configuration.
-  $settings = $translator->getSetting('settings');
-  return ($settings['callback_user'] === $user && $settings['callback_password'] === $password);
-}
-
-/**
  * Function available to call from our webservice.
  */
 function FPFISPoetryIntegrationRequest($user, $password, $msg) {
@@ -423,6 +366,63 @@ function FPFISPoetryIntegrationRequest($user, $password, $msg) {
 
   return $xml->asXML();
 
+}
+
+/**
+ * Helper function to authenticate request made to our service.
+ */
+function _tmgmt_poetry_authenticate($user, $password, $translator) {
+  // Get the Poetry translator configuration.
+  $settings = $translator->getSetting('settings');
+  return ($settings['callback_user'] === $user && $settings['callback_password'] === $password);
+}
+
+/**
+ * Helper function to generate an answer xml for received Poetry requests.
+ */
+function _tmgmt_poetry_generate_answer_xml($job = NULL, $message = 'OK', $code = 0, $received_request = NULL) {
+  // Create initial XML element using POETRY headers.
+  $xml = new SimpleXMLElement("<?xml version=\"1.0\" encoding=\"utf-8\" ?>
+    <POETRY xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"
+    xsi:noNamespaceSchemaLocation=\"http://intragate.ec.europa.eu/DGT/poetry_services/poetry.xsd\">
+    </POETRY>");
+
+  // Add main request element.
+  $request = $xml->addChild('request');
+
+  if ($received_request !== NULL) {
+    $reference = implode('/', (array) $received_request->demandeId);
+  }
+  elseif ($job !== NULL) {
+    $reference = $job->reference;
+  }
+
+  $request->addAttribute('id', $reference);
+  $request->addAttribute('type', 'status');
+
+  // Add request identifier.
+  $demande_id_data = explode('/', $reference);
+  $demande_id = $request->addChild('demandeId');
+  $demande_id->addChild('codeDemandeur', $demande_id_data[0]);
+  $demande_id->addChild('annee', $demande_id_data[1]);
+  $demande_id->addChild('numero', $demande_id_data[2]);
+  $demande_id->addChild('version', $demande_id_data[3]);
+  $demande_id->addChild('partie', $demande_id_data[4]);
+  $demande_id->addChild('produit', $demande_id_data[5]);
+
+  $status = $request->addChild('status');
+  $status->addAttribute('type', 'request');
+  $status->addAttribute('code', $code);
+
+  $status_date = $status->addChild('statusDate', date('d/m/Y'));
+  $status_date->addAttribute('format', 'dd/mm/yyyy');
+
+  $status_time = $status->addChild('statusTime', date('h:i:s'));
+  $status_time->addAttribute('format', 'hh:mm:ss');
+
+  $status->addChild('statusMessage', $message);
+
+  return $xml;
 }
 
 /**

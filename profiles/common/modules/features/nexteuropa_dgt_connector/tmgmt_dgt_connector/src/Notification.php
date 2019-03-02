@@ -14,6 +14,13 @@ use EC\Poetry\Messages\Notifications\TranslationReceived;
 class Notification extends BaseNotification {
 
   /**
+   * Name of the translator that handles this notification.
+   *
+   * @var string
+   */
+  protected $translatorName = 'poetry';
+
+  /**
    * Process notification TranslationReceived.
    *
    * @param \EC\Poetry\Messages\Notifications\TranslationReceived $message
@@ -27,17 +34,16 @@ class Notification extends BaseNotification {
     $reference = $message->getIdentifier()->getFormattedIdentifier();
 
     // Get main job in order to register the messages and get translator.
-    $main_reference = 'MAIN_%_POETRY_%' . $reference;
     $targets = $message->getTargets();
     /** @var \EC\Poetry\Messages\Components\Target $target */
     $target = current($targets);
 
-    $ids = tmgmt_poetry_obtain_related_translation_jobs(array(), $main_reference)->fetchAll();
+    $ids = tmgmt_poetry_obtain_related_translation_jobs(array(), 'MAIN_%_POETRY_%' . $reference)->fetchAll();
     if (empty($ids)) {
       watchdog(
         "tmgmt_poetry",
         "Callback can't find job with reference !reference .",
-        array('!reference' => $main_reference),
+        array('!reference' => $reference),
         WATCHDOG_ERROR
       );
       return FALSE;
@@ -47,16 +53,16 @@ class Notification extends BaseNotification {
     $main_id = array_shift($ids);
     $main_job = tmgmt_job_load($main_id->tjid);
 
-    if ($main_job->translator !== TMGMT_DGT_CONNECTOR_TRANSLATOR_NAME) {
+    $translator = $this->getTranslator($main_job, $message);
+    if (!$translator) {
       return FALSE;
     }
-    $translator = tmgmt_translator_load($main_job->translator);
 
     if ($main_job->isAborted()) {
       watchdog(
         "tmgmt_poetry",
         "Translation received for aborted job with reference !reference .",
-        array('!reference' => $main_reference),
+        array('!reference' => $reference),
         WATCHDOG_ERROR
       );
       return FALSE;
@@ -66,7 +72,7 @@ class Notification extends BaseNotification {
       watchdog(
         "tmgmt_poetry",
         "Callback can't find controller with reference !reference .",
-        array('!reference' => $main_reference),
+        array('!reference' => $reference),
         WATCHDOG_ERROR
       );
       return FALSE;
@@ -214,7 +220,6 @@ class Notification extends BaseNotification {
     $attributions_statuses = $message->getAttributionStatuses();
 
     // Get main job in order to register the messages.
-    $main_reference = 'MAIN_%_POETRY_%' . $reference;
     $languages_jobs = array();
     /** @var \EC\Poetry\Messages\Components\Status $attribution_status */
     foreach ($attributions_statuses as $attribution_status) {
@@ -222,7 +227,7 @@ class Notification extends BaseNotification {
     }
     $ids = tmgmt_poetry_obtain_related_translation_jobs(
       $languages_jobs,
-      $main_reference
+      'MAIN_%_POETRY_%' . $reference
     )->fetchAll();
     if (!$ids) {
       watchdog(
@@ -236,8 +241,9 @@ class Notification extends BaseNotification {
     $main_id = array_shift($ids);
     $main_job = tmgmt_job_load($main_id->tjid);
 
-    if ($main_job->translator !== TMGMT_DGT_CONNECTOR_TRANSLATOR_NAME) {
-      return FALSE;
+    $translator = $this->getTranslator($main_job);
+    if (!$translator) {
+      return;
     }
 
     // 1. Check status of request.

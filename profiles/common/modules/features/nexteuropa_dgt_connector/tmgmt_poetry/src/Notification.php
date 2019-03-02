@@ -2,6 +2,7 @@
 
 namespace Drupal\tmgmt_poetry;
 
+use Drupal\tmgmt_poetry_mock\Mock\PoetryMock;
 use EC\Poetry\Messages\Notifications\StatusUpdated;
 use EC\Poetry\Messages\Notifications\TranslationReceived;
 
@@ -11,6 +12,13 @@ use EC\Poetry\Messages\Notifications\TranslationReceived;
  * @package Drupal\tmgmt_poetry
  */
 class Notification {
+
+  /**
+   * Name of the translator that handles this notification.
+   *
+   * @var string
+   */
+  protected $translatorName = TMGMT_DGT_CONNECTOR_TRANSLATOR_NAME;
 
   /**
    * Process notification TranslationReceived.
@@ -26,17 +34,16 @@ class Notification {
     $reference = $message->getIdentifier()->getFormattedIdentifier();
 
     // Get main job in order to register the messages and get translator.
-    $main_reference = 'MAIN_%_POETRY_%' . $reference;
     $targets = $message->getTargets();
     /** @var \EC\Poetry\Messages\Components\Target $target */
     $target = current($targets);
 
-    $ids = tmgmt_poetry_obtain_related_translation_jobs(array(), $main_reference)->fetchAll();
+    $ids = tmgmt_poetry_obtain_related_translation_jobs(array(), 'MAIN_%_POETRY_%' . $reference)->fetchAll();
     if (empty($ids)) {
       watchdog(
         "tmgmt_poetry",
         "Callback can't find job with reference !reference .",
-        array('!reference' => $main_reference),
+        array('!reference' => $reference),
         WATCHDOG_ERROR
       );
       return FALSE;
@@ -46,20 +53,16 @@ class Notification {
     $main_id = array_shift($ids);
     $main_job = tmgmt_job_load($main_id->tjid);
 
-    if ($main_job->translator === 'tmgmt_poetry_test_translator') {
-      poetry_integration_request_mock($message->getRaw());
-      return TRUE;
-    }
-    elseif ($main_job->translator !== 'poetry') {
+    $translator = $this->getTranslator($main_job, $message);
+    if (!$translator) {
       return FALSE;
     }
-    $translator = tmgmt_translator_load($main_job->translator);
 
     if ($main_job->isAborted()) {
       watchdog(
         "tmgmt_poetry",
         "Translation received for aborted job with reference !reference .",
-        array('!reference' => $main_reference),
+        array('!reference' => $reference),
         WATCHDOG_ERROR
       );
       return FALSE;
@@ -69,7 +72,7 @@ class Notification {
       watchdog(
         "tmgmt_poetry",
         "Callback can't find controller with reference !reference .",
-        array('!reference' => $main_reference),
+        array('!reference' => $reference),
         WATCHDOG_ERROR
       );
       return FALSE;
@@ -216,8 +219,7 @@ class Notification {
     $attributions_statuses = $message->getAttributionStatuses();
 
     // Get main job in order to register the messages.
-    $main_reference = 'MAIN_%_POETRY_%' . $reference;
-    $ids = tmgmt_poetry_obtain_related_translation_jobs([], $main_reference)->fetchAll();
+    $ids = tmgmt_poetry_obtain_related_translation_jobs([], 'MAIN_%_POETRY_%' . $reference)->fetchAll();
     if (!$ids) {
       watchdog(
         "tmgmt_poetry",
@@ -230,14 +232,10 @@ class Notification {
     $main_id = array_shift($ids);
     $main_job = tmgmt_job_load($main_id->tjid);
 
-    if ($main_job->translator === 'tmgmt_poetry_test_translator') {
-      poetry_integration_request_mock($message->getRaw());
-      return TRUE;
+    $translator = $this->getTranslator($main_job, $message);
+    if (!$translator) {
+      return;
     }
-    elseif ($main_job->translator !== 'poetry') {
-      return FALSE;
-    }
-    $translator = tmgmt_translator_load($main_job->translator);
 
     // 1. Check status of request.
     $request_status = $message->getRequestStatus();
@@ -366,10 +364,37 @@ class Notification {
     }
   }
 
+  /**
+   * Get the translator from main job.
+   *
+   * @param object $job
+   *   The job.
+   * @param object $message
+   *   The received message.
+   *
+   * @return bool|\TMGMTTranslator
+   *   The job translator.
+   */
+  protected function getTranslator($job, $message) {
+    if ($job->translator === PoetryMock::TRANSLATOR_NAME) {
+      poetry_integration_request_mock($message->getRaw());
+      return FALSE;
+    }
+    elseif ($job->translator !== $this->translatorName) {
+      return FALSE;
+    }
+    return tmgmt_translator_load($job->translator);
+  }
+
 }
 
 /**
  * Function available to call from our webservice.
+ *
+ * Temporary (WIP).
+ *
+ * Equivalent to FPFISPoetryIntegrationRequest() in
+ * profiles/common/modules/features/nexteuropa_dgt_connector/tmgmt_poetry/inc/tmgmt_poetry.webservice.inc
  */
 function poetry_integration_request_mock($msg) {
   watchdog(
@@ -401,8 +426,7 @@ function poetry_integration_request_mock($msg) {
   }
 
   // Get main job in order to register the messages.
-  $main_reference = 'MAIN_%_POETRY_%' . $reference;
-  $ids = tmgmt_poetry_obtain_related_translation_jobs([], $reference)
+  $ids = tmgmt_poetry_obtain_related_translation_jobs([], 'MAIN_%_POETRY_%' . $reference)
     ->fetchAll();
 
   // Handling the case where we can't find the corresponding job.
@@ -672,7 +696,7 @@ function poetry_integration_request_mock($msg) {
     "tmgmt_poetry",
     "Send response 'status' with remote reference @reference: !xml",
     array(
-      '@reference' => $main_reference,
+      '@reference' => $reference,
       '!xml' => htmlentities($xml->asXML()),
     ),
     WATCHDOG_INFO
